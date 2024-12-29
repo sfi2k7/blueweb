@@ -8,12 +8,19 @@ import (
 	"os/signal"
 	"path"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/pkg/errors"
 )
+
+type RouterOptions struct {
+	statsEndpoint string
+	statstoken    string
+}
 
 type BlueWebMiddleware func(c *Context) bool
 type BluewebHandler func(c *Context)
@@ -33,11 +40,16 @@ type Router struct {
 	server          *http.Server
 	stopOnInt       bool
 	wsserver        *WsServer
+	requestCount    uint64
+	rqc             *reqcount
+	statstoken      string
+	statsendpoint   string
+	ro              *RouterOptions
 }
 
 func picohandlertohttphandler(c BluewebHandler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c(&Context{w: w, r: r})
+		c(&Context{ResponseWriter: w, Request: r})
 	})
 }
 
@@ -105,6 +117,26 @@ func (g *GroupOptions) SkipMusts() *GroupOptions {
 // SetDev sets the server to development mode
 func (c *Config) SetDev(dev bool) *Config {
 	c.r.isDev = dev
+	return c
+}
+
+// SetStatsToken sets the token for the stats endpoint
+// token is the token to use
+func (c *Config) SetStatsToken(token string) *Config {
+	c.r.statstoken = token
+	return c
+}
+
+// SetStatsEndpoint sets the endpoint for the stats
+// endpoint is the endpoint to use
+func (c *Config) SetStatsEndpoint(endpoint string) *Config {
+	c.r.statsendpoint = endpoint
+	return c
+}
+
+// DisableStats disables the stats endpoint
+func (c *Config) DisableStats() *Config {
+	c.r.statsendpoint = ""
 	return c
 }
 
@@ -233,6 +265,9 @@ func (r *Router) Group(prefix string) *Router {
 // 	r.mux.Ws(pattern, fn)
 // }
 
+// Ws sets a websocket endpoint
+// pattern is the path for the websocket
+// mh is the handler for the websocket
 func (r *Router) Ws(pattern string, mh WsHandler) {
 	if r.parent != nil {
 		panic("Websocket endpoint can only be defined at root level")
@@ -339,9 +374,28 @@ func (r *Router) runMiddlewares(c *Context) bool {
 	return true
 }
 
+// middleware is a wrapper for the BlueWebHandler
+// it runs the middlewares before the handler
+// and the must middlewares after the handler
 func (r *Router) middleware(fn BluewebHandler) httprouter.Handle {
 	return func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
-		c := &Context{store: newStore(), w: w, r: req, params: p}
+
+		//TODO: fix stats endpoint requests showing up in stats
+		if len(r.statsendpoint) != 0 {
+			if strings.Index(req.URL.Path, r.statsendpoint) == 0 {
+				fn(&Context{ResponseWriter: w, Request: req, params: p})
+				return
+			}
+		}
+
+		start := time.Now()
+		c := &Context{store: newStore(), ResponseWriter: w, Request: req, params: p}
+		c.User = &user{}
+		c.IsWebsocket = req.Header.Get("Upgrade") == "websocket"
+		c.SessionId = c.UniqueId()
+
+		r.rqc.Add(req.URL.Path)
+		atomic.AddUint64(&r.requestCount, 1)
 
 		movenext := r.runMiddlewares(c)
 
@@ -353,23 +407,59 @@ func (r *Router) middleware(fn BluewebHandler) httprouter.Handle {
 			r.runMust(c)
 		}
 
-		c.UserData = nil
 		c.store = nil
 		c.SessionId = ""
 		c.User = nil
 		c.State = nil
+		c.Request = nil
+		c.ResponseWriter = nil
+
+		if r.isDev {
+			fmt.Printf("ts: %s, time:%s, req:%d/%d, url:%s\n", time.Now().Format(time.RFC1123), time.Since(start), r.rqc.Get(req.URL.Path), atomic.LoadUint64(&r.requestCount), req.URL)
+		}
 	}
 }
 
 // NewRouter creates a new router
 // returns a new router
 func NewRouter() *Router {
-	return &Router{gopt: &serveroptions{}, so: &serveroptions{}, parent: nil, port: 8080, mux: httprouter.New()}
+	router := &Router{
+		gopt:          &serveroptions{},
+		so:            &serveroptions{},
+		parent:        nil,
+		port:          8080,
+		mux:           httprouter.New(),
+		rqc:           &reqcount{r: make(map[string]uint64)},
+		statstoken:    "blueweb",
+		statsendpoint: "/__internal__/stats/:token",
+	}
+
+	return router
 }
 
 // StartServer starts the server
 // returns an error if the server fails to start
 func (r *Router) StartServer() error {
+
+	if len(r.statsendpoint) > 0 {
+		r.Get(r.statsendpoint, func(c *Context) {
+			token := c.params.ByName("token")
+			if len(r.statstoken) > 0 && token != r.statstoken {
+				c.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			o := O{"Total Requests": atomic.LoadUint64(&r.requestCount),
+				"RequestCountByPath": r.rqc.r,
+			}
+
+			if r.wsserver != nil {
+				o["WS Connection Count"] = r.wsserver.conns.count()
+			}
+
+			c.Json(o)
+		})
+	}
 
 	r.server = &http.Server{
 		Addr:    ":" + strconv.Itoa(r.port),
@@ -385,12 +475,14 @@ func (r *Router) StartServer() error {
 			fmt.Print("Shutting Down...")
 			go r.wsserver.Close()
 			r.StopServer()
-
 			fmt.Println("Done!")
 		}()
 	}
 
-	fmt.Println("Listening on ", r.port)
+	if r.isDev {
+		fmt.Println("Listening on ", r.port)
+	}
+
 	if len(r.cert) > 0 && len(r.key) > 0 {
 		return r.server.ListenAndServeTLS(r.cert, r.key)
 	}
@@ -414,37 +506,3 @@ func (r *Router) StopServer() error {
 
 	return r.server.Close()
 }
-
-// func (p *Router) StopOnIntWithFunc(fn func()) {
-// 	p.c = make(chan os.Signal, 1)
-// 	signal.Notify(p.c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
-
-// 	go func() {
-// 		<-p.c
-
-// 		if server != nil {
-// 			server.isShuttingDown = true
-// 			connections.closeAll()
-// 		}
-
-// 		if isDev {
-// 			fmt.Println("Shutting Down!")
-// 		}
-
-// 		p.Stop()
-
-// 		if isDev {
-// 			fmt.Println("Done!")
-// 		}
-
-// 		if fn != nil {
-// 			fmt.Println("Calling INT callback")
-// 			fn()
-// 		}
-
-// 		close(p.c)
-
-// 		fmt.Println("Exiting to OS")
-// 		os.Exit(0)
-// 	}()
-// }

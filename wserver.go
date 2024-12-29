@@ -9,6 +9,13 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	WsEventOpen    = "ws_open"
+	WsEventClose   = "ws_close"
+	WsEventError   = "ws_error"
+	WsEventMessage = "ws_message"
+)
+
 var WsForceClose = WsData{"close": true}
 
 type WsServer struct {
@@ -33,8 +40,7 @@ func (ws *WsServer) Handle(c *Context) {
 		}
 	}()
 
-	c.IsWebsocket = true
-
+	fmt.Println("Is Websocket", c.IsWebsocket)
 	if ws.isclosing {
 		c.WriteHeader(http.StatusInternalServerError)
 		return
@@ -55,7 +61,7 @@ func (ws *WsServer) Handle(c *Context) {
 		openData[strings.ToLower(k)] = q[0]
 	}
 
-	for k, v := range c.r.Header {
+	for k, v := range c.Request.Header {
 		if len(v) == 0 {
 			continue
 		}

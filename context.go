@@ -20,18 +20,17 @@ import (
 )
 
 type Context struct {
-	w           http.ResponseWriter
-	r           *http.Request
-	params      httprouter.Params
-	SessionId   string
-	machineID   string
-	Start       time.Time
-	IsWebsocket bool
-	AppName     string
-	User        interface{}
-	State       interface{}
-	UserData    interface{}
-	store       *store
+	ResponseWriter http.ResponseWriter
+	Request        *http.Request
+	params         httprouter.Params
+	SessionId      string
+	machineID      string
+	IsWebsocket    bool
+	AppName        string
+	User           *user
+	IsSecure       bool
+	State          interface{}
+	store          *store
 }
 
 func (c *Context) Set(k string, v interface{}) {
@@ -42,26 +41,29 @@ func (c *Context) Get(k string) interface{} {
 	return c.store.Get(k)
 }
 
-func (c *Context) UniqueId() string {
-	//try to generara a unique id based on remote address and user agent
-	return c.SessionHash()
+func (c *Context) Del(k string) {
+	c.store.Del(k)
 }
 
-func (c *Context) SessionHash() string {
+func (c *Context) UniqueId() string {
+	return c.sessionHash()
+}
+
+func (c *Context) sessionHash() string {
 	hasher := sha1.New()
-	hasher.Write([]byte(c.r.UserAgent()))
-	hasher.Write([]byte(c.r.RemoteAddr))
+	hasher.Write([]byte(c.Request.UserAgent()))
+	hasher.Write([]byte(c.Request.RemoteAddr))
 	hash := hasher.Sum(nil)
 	return hex.EncodeToString(hash)
 }
 
 func (c *Context) Body() ([]byte, error) {
-	bts, err := io.ReadAll(c.r.Body)
+	bts, err := io.ReadAll(c.Request.Body)
 	return bts, err
 }
 
 func (c *Context) ParseBody(target interface{}) error {
-	bts, err := io.ReadAll(c.r.Body)
+	bts, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return err
 	}
@@ -70,11 +72,11 @@ func (c *Context) ParseBody(target interface{}) error {
 }
 
 func (c *Context) Query(key string) string {
-	return c.r.URL.Query().Get(key)
+	return c.Request.URL.Query().Get(key)
 }
 
 func (c *Context) QueryCaseIn(key string) string {
-	for k, v := range c.r.URL.Query() {
+	for k, v := range c.Request.URL.Query() {
 		if strings.EqualFold(k, key) {
 			if len(v) > 0 {
 				return v[0]
@@ -111,45 +113,41 @@ func (c *Context) QueryBool(key string) (bool, error) {
 }
 
 func (c *Context) Form(key string) string {
-	return c.r.FormValue(key)
+	return c.Request.FormValue(key)
 }
 
 func (c *Context) Method() string {
-	return c.r.Method
+	return c.Request.Method
 }
 
 func (c *Context) MethodLower() string {
-	return strings.ToLower(c.r.Method)
+	return strings.ToLower(c.Request.Method)
 }
 
 func (c *Context) Header(key string) string {
-	return c.r.Header.Get(key)
+	return c.Request.Header.Get(key)
 }
 
 func (c *Context) RemoteIP() string {
-	return c.r.RemoteAddr
-}
-
-func (c *Context) R() *http.Request {
-	return c.r
+	return c.Request.RemoteAddr
 }
 
 func (c *Context) BasicAuth() (string, string, bool) {
-	return c.r.BasicAuth()
+	return c.Request.BasicAuth()
 }
 
 func (c *Context) SetHeader(key string, value string) {
-	c.w.Header().Set(key, value)
+	c.ResponseWriter.Header().Set(key, value)
 }
 
 func (c *Context) File(filePath string, mimeType string) {
-	c.w.Header().Set("content-type", mimeType)
-	http.ServeFile(c.w, c.r, filePath)
+	c.ResponseWriter.Header().Set("content-type", mimeType)
+	http.ServeFile(c.ResponseWriter, c.Request, filePath)
 }
 
 func (c *Context) FileHTML(filePath string) {
-	c.w.Header().Set("content-type", "text/html; charset=utf-8")
-	http.ServeFile(c.w, c.r, filePath)
+	c.ResponseWriter.Header().Set("content-type", "text/html; charset=utf-8")
+	http.ServeFile(c.ResponseWriter, c.Request, filePath)
 }
 
 func (c *Context) String(str string) {
@@ -157,11 +155,11 @@ func (c *Context) String(str string) {
 }
 
 func (c *Context) Status(statusCode int) {
-	c.w.WriteHeader(statusCode)
+	c.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (c *Context) StatusWithString(statusCode int, status string) {
-	c.w.WriteHeader(statusCode)
+	c.ResponseWriter.WriteHeader(statusCode)
 	c.String(status)
 }
 
@@ -182,7 +180,7 @@ func (c *Context) View(filePath string, data interface{}) error {
 		return err
 	}
 
-	err = tmpl.Execute(c.w, data)
+	err = tmpl.Execute(c.ResponseWriter, data)
 	return err
 }
 
@@ -192,15 +190,15 @@ func (c *Context) Params(name string) string {
 }
 
 func (c *Context) ResponseHeader() http.Header {
-	return c.w.Header()
+	return c.ResponseWriter.Header()
 }
 
 func (c Context) WriteHeader(n int) {
-	c.w.WriteHeader(n)
+	c.ResponseWriter.WriteHeader(n)
 }
 
 func (c Context) Write(b []byte) (int, error) {
-	return c.w.Write(b)
+	return c.ResponseWriter.Write(b)
 }
 
 func (c *Context) SetCookie(name, value string, expireIn time.Duration) {
@@ -215,19 +213,19 @@ func (c *Context) SetCookie(name, value string, expireIn time.Duration) {
 		Raw:      value,
 		Unparsed: []string{value},
 	}
-	http.SetCookie(c.w, cookie)
+	http.SetCookie(c.ResponseWriter, cookie)
 }
 
 func (c *Context) URL() *url.URL {
-	return c.r.URL
+	return c.Request.URL
 }
 
 func (c *Context) HasPrefix(prefix string) bool {
-	return strings.Index(c.r.URL.Path, prefix) == 0
+	return strings.Index(c.Request.URL.Path, prefix) == 0
 }
 
 func (c *Context) IsStatic() bool {
-	p := c.r.URL.Path
+	p := c.Request.URL.Path
 
 	lastSlash := strings.LastIndex(p, "/")
 
@@ -240,23 +238,23 @@ func (c *Context) IsStatic() bool {
 }
 
 func (c *Context) GetStaticFileExt() string {
-	return path.Ext(c.r.URL.Path)
+	return path.Ext(c.Request.URL.Path)
 }
 
 func (c *Context) Host() string {
-	return c.r.Host
+	return c.Request.Host
 }
 
 func (c *Context) Path() string {
-	return c.r.URL.Path
+	return c.Request.URL.Path
 }
 
 func (c *Context) W() http.ResponseWriter {
-	return c.w
+	return c.ResponseWriter
 }
 
 // func (c *Context) GetStaticDirFile() (string, string) {
-// 	p := c.r.URL.Path
+// 	p := c.Request.URL.Path
 // 	dir, file := filepath.Split(p)
 // 	return dir, file
 // }
@@ -272,7 +270,7 @@ func (c *Context) W() http.ResponseWriter {
 // }
 
 func (c *Context) GetCookie(name string) string {
-	cookie, err := c.r.Cookie(name)
+	cookie, err := c.Request.Cookie(name)
 	if err != nil {
 		fmt.Println("COOKIE ERROR", err)
 		return ""
@@ -280,7 +278,7 @@ func (c *Context) GetCookie(name string) string {
 
 	val := cookie.Value
 	if len(val) == 0 {
-		for _, ck := range c.r.Cookies() {
+		for _, ck := range c.Request.Cookies() {
 			if ck.Name == name {
 				return ck.Value
 			}
@@ -320,7 +318,7 @@ func (c *Context) Upgrade() (*websocket.Conn, error) {
 		return true
 	}
 
-	conn, err := upgrader.Upgrade(c.w, c.r, nil)
+	conn, err := upgrader.Upgrade(c.ResponseWriter, c.Request, nil)
 	return conn, err
 }
 
@@ -329,7 +327,7 @@ func (c *Context) RemoveCookie(name string) {
 }
 
 func (c *Context) Redirect(url string, code int) {
-	http.Redirect(c.w, c.r, url, code)
+	http.Redirect(c.ResponseWriter, c.Request, url, code)
 }
 
 // type Socket struct {
