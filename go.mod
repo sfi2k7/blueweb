@@ -1,4 +1,4 @@
-module blueweb
+module github.com/sfi2k7/blueweb
 
 go 1.22.5
 
