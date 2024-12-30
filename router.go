@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -429,7 +430,7 @@ func NewRouter() *Router {
 		parent:        nil,
 		port:          8080,
 		mux:           httprouter.New(),
-		rqc:           &reqcount{r: make(map[string]uint64)},
+		rqc:           &reqcount{r: make(map[string]uint64), s: sync.Mutex{}},
 		statstoken:    "blueweb",
 		statsendpoint: "/__internal__/stats/:token",
 	}
