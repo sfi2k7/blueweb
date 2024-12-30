@@ -241,7 +241,15 @@ func (c *Config) RedirectTrailingSlash() *Config {
 // prefix is the prefix for the group
 // returns a new router
 func (r *Router) Group(prefix string) *Router {
-	router := &Router{so: r.so, gopt: &serveroptions{}, parent: r, mux: r.mux, prefix: path.Join(r.prefix, prefix)}
+	router := &Router{
+		so:           r.so,
+		gopt:         &serveroptions{},
+		parent:       r,
+		mux:          r.mux,
+		prefix:       path.Join(r.prefix, prefix),
+		rqc:          r.rqc,
+		requestCount: r.requestCount,
+	}
 	return router
 }
 
@@ -290,6 +298,7 @@ func (r *Router) Ws(pattern string, mh WsHandler) {
 // pattern is the path for the route
 // fn is the handler for the route
 func (r *Router) Get(pattern string, fn BluewebHandler) {
+	fmt.Println("Adding GET", path.Join(r.prefix, pattern))
 	r.mux.GET(path.Join(r.prefix, pattern), r.middleware(fn))
 }
 
@@ -395,6 +404,7 @@ func (r *Router) middleware(fn BluewebHandler) httprouter.Handle {
 		c.IsWebsocket = req.Header.Get("Upgrade") == "websocket"
 		c.SessionId = c.UniqueId()
 
+		fmt.Println("Updaiting rqc", r.rqc)
 		r.rqc.Add(req.URL.Path)
 		atomic.AddUint64(&r.requestCount, 1)
 
