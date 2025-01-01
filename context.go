@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
+	nbiowebsocket "github.com/lesismal/nbio/nbhttp/websocket"
 	"github.com/pkg/errors"
 )
 
@@ -319,6 +320,37 @@ func (c *Context) Upgrade() (*websocket.Conn, error) {
 	}
 
 	conn, err := upgrader.Upgrade(c.ResponseWriter, c.Request, nil)
+	return conn, err
+}
+
+func (c *Context) UpgradeNBIO() (*nbiowebsocket.Conn, error) {
+
+	u := nbiowebsocket.NewUpgrader()
+
+	u.OnOpen(func(c *nbiowebsocket.Conn) {
+		// echo
+		fmt.Println("OnOpen:", c.RemoteAddr().String())
+	})
+
+	u.OnMessage(func(c *nbiowebsocket.Conn, messageType nbiowebsocket.MessageType, data []byte) {
+		// echo
+		fmt.Println("OnMessage:", messageType, string(data))
+		c.WriteMessage(messageType, data)
+	})
+
+	u.OnClose(func(c *nbiowebsocket.Conn, err error) {
+		fmt.Println("OnClose:", c.RemoteAddr().String(), err)
+	})
+
+	var upgrader = nbiowebsocket.NewUpgrader()
+	//  websocket.Upgrader{EnableCompression: true, HandshakeTimeout: time.Second * 5, ReadBufferSize: 4096, WriteBufferSize: 4096}
+
+	upgrader.CheckOrigin = func(r *http.Request) bool {
+		return true
+	}
+
+	conn, err := u.Upgrade(c.ResponseWriter, c.Request, nil) // upgrader.Upgrade(c.ResponseWriter, c.Request, nil)
+
 	return conn, err
 }
 

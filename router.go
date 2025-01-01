@@ -23,15 +23,15 @@ type RouterOptions struct {
 	statstoken    string
 }
 
-type BlueWebMiddleware func(c *Context) bool
-type BluewebHandler func(c *Context)
+type Middleware func(c *Context) bool
+type Handler func(c *Context)
 
 type Router struct {
 	mux             *httprouter.Router
 	prefix          string
 	parent          *Router
-	middlewares     []BlueWebMiddleware
-	mustmiddlewares []BlueWebMiddleware
+	middlewares     []Middleware
+	mustmiddlewares []Middleware
 	port            int
 	cert            string
 	key             string
@@ -48,7 +48,7 @@ type Router struct {
 	ro              *RouterOptions
 }
 
-func picohandlertohttphandler(c BluewebHandler) http.Handler {
+func picohandlertohttphandler(c Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c(&Context{ResponseWriter: w, Request: r})
 	})
@@ -176,10 +176,18 @@ func (c *Config) SkipAllMiddlewares() *Config {
 // Static sets a static file server
 // urlPath is the path to serve the files
 // diskPath is the path to the files on disk
-// func (c *Config) Static(urlPath, diskPath string) *Config {
-// 	c.r.mux.Static(urlPath, diskPath)
-// 	return c
-// }
+func (c *Config) Static(urlPath, diskPath string) *Config {
+	if urlPath[len(urlPath)-1] == '/' {
+		urlPath = urlPath[:len(urlPath)-1]
+	}
+
+	if urlPath[0:1] != "/" {
+		urlPath = "/" + urlPath
+	}
+
+	c.r.mux.ServeFiles(urlPath+"/*filepath", http.Dir(diskPath))
+	return c
+}
 
 // UseSSL sets the server to use SSL
 // cert and key are the paths to the certificate and key files
@@ -198,7 +206,7 @@ func (c *Config) SkipMusts() *Config {
 
 // GlobalOPTIONS sets the handler for global OPTIONS requests
 // This is the same as setting a route for the path with the method OPTIONS
-func (c *Config) GlobalOPTIONS(fn BluewebHandler) *Config {
+func (c *Config) GlobalOPTIONS(fn Handler) *Config {
 	c.r.mux.GlobalOPTIONS = picohandlertohttphandler(fn)
 	return c
 }
@@ -211,14 +219,14 @@ func (c *Config) HandleOPTIONS() *Config {
 
 // MethodNotAllowed sets the handler for when a method is not allowed
 // This is the same as setting a route for the path with the method not allowed
-func (c *Config) MethodNotAllowed(fn BluewebHandler) *Config {
+func (c *Config) MethodNotAllowed(fn Handler) *Config {
 	c.r.mux.MethodNotAllowed = picohandlertohttphandler(fn)
 	return c
 }
 
 // NotFound sets the handler for when a route is not found
 // This is the same as setting a route for the path not found
-func (c *Config) NotFound(fn BluewebHandler) *Config {
+func (c *Config) NotFound(fn Handler) *Config {
 	c.r.mux.NotFound = picohandlertohttphandler(fn)
 	return c
 }
@@ -297,7 +305,7 @@ func (r *Router) Ws(pattern string, mh WsHandler) {
 // Get sets a GET route
 // pattern is the path for the route
 // fn is the handler for the route
-func (r *Router) Get(pattern string, fn BluewebHandler) {
+func (r *Router) Get(pattern string, fn Handler) {
 	fmt.Println("Adding GET", path.Join(r.prefix, pattern))
 	r.mux.GET(path.Join(r.prefix, pattern), r.middleware(fn))
 }
@@ -305,43 +313,43 @@ func (r *Router) Get(pattern string, fn BluewebHandler) {
 // Post sets a POST route
 // pattern is the path for the route
 // fn is the handler for the route
-func (r *Router) Post(pattern string, fn BluewebHandler) {
+func (r *Router) Post(pattern string, fn Handler) {
 	r.mux.POST(path.Join(r.prefix, pattern), r.middleware(fn))
 }
 
 // Put sets a PUT route
 // pattern is the path for the route
-func (r *Router) Put(pattern string, fn BluewebHandler) {
+func (r *Router) Put(pattern string, fn Handler) {
 	r.mux.PUT(path.Join(r.prefix, pattern), r.middleware(fn))
 }
 
 // Delete sets a DELETE route
 // pattern is the path for the route
-func (r *Router) Delete(pattern string, fn BluewebHandler) {
+func (r *Router) Delete(pattern string, fn Handler) {
 	r.mux.DELETE(path.Join(r.prefix, pattern), r.middleware(fn))
 }
 
 // Patch sets a PATCH route
 // pattern is the path for the route
-func (r *Router) Patch(pattern string, fn BluewebHandler) {
+func (r *Router) Patch(pattern string, fn Handler) {
 	r.mux.PATCH(path.Join(r.prefix, pattern), r.middleware(fn))
 }
 
 // Options sets a OPTIONS route
 // pattern is the path for the route
-func (r *Router) Options(pattern string, fn BluewebHandler) {
+func (r *Router) Options(pattern string, fn Handler) {
 	r.mux.OPTIONS(path.Join(r.prefix, pattern), r.middleware(fn))
 }
 
 // Must sets a must middleware that must run after the route handler
 // fn is the must middleware
-func (r *Router) Must(fn BlueWebMiddleware) {
+func (r *Router) Must(fn Middleware) {
 	r.mustmiddlewares = append(r.mustmiddlewares, fn)
 }
 
 // Use sets a middleware
 // fn is the middleware
-func (r *Router) Use(fn BlueWebMiddleware) {
+func (r *Router) Use(fn Middleware) {
 	r.middlewares = append(r.middlewares, fn)
 }
 
@@ -384,10 +392,10 @@ func (r *Router) runMiddlewares(c *Context) bool {
 	return true
 }
 
-// middleware is a wrapper for the BlueWebHandler
+// middleware is a wrapper for the Handler
 // it runs the middlewares before the handler
 // and the must middlewares after the handler
-func (r *Router) middleware(fn BluewebHandler) httprouter.Handle {
+func (r *Router) middleware(fn Handler) httprouter.Handle {
 	return func(w http.ResponseWriter, req *http.Request, p httprouter.Params) {
 
 		//TODO: fix stats endpoint requests showing up in stats
