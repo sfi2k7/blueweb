@@ -1,7 +1,6 @@
 package blueweb
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -13,7 +12,7 @@ type reqcount struct {
 }
 
 func (r *reqcount) Add(k string) {
-	fmt.Println("Add", k, r.s, r == nil)
+	// fmt.Println("Add", k, r.s, r == nil)
 	r.s.Lock()
 	defer r.s.Unlock()
 

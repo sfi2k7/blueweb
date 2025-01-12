@@ -40,7 +40,7 @@ func (ws *WsServer) Handle(c *Context) {
 		}
 	}()
 
-	fmt.Println("Is Websocket", c.IsWebsocket)
+	// fmt.Println("Is Websocket", c.IsWebsocket)
 	if ws.isclosing {
 		c.WriteHeader(http.StatusInternalServerError)
 		return

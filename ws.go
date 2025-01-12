@@ -32,7 +32,7 @@ func (wd WsData) Set(k string, v Interface) {
 func (wd WsData) Json() string {
 	bts, err := json.Marshal(wd)
 	if err != nil {
-		fmt.Println("Error in WSDATA JSON()", err)
+		// fmt.Println("Error in WSDATA JSON()", err)
 	}
 	return string(bts)
 }
@@ -74,7 +74,7 @@ func (wd WsData) Bool(k string) bool {
 		// fmt.Println("Parsing as bool", str)
 		b, err := strconv.ParseBool(str)
 		if err != nil {
-			fmt.Println("Error parding bool")
+			// fmt.Println("Error parding bool")
 		}
 		return b
 	}
@@ -150,7 +150,7 @@ func (wd WsData) Int(k string) int {
 	v := wd[k]
 	// fmt.Println("WD V", v)
 	if v == nil {
-		fmt.Println("Int:V us nil")
+		// fmt.Println("Int:V us nil")
 		return 0
 	}
 

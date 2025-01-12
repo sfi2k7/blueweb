@@ -306,7 +306,7 @@ func (r *Router) Ws(pattern string, mh WsHandler) {
 // pattern is the path for the route
 // fn is the handler for the route
 func (r *Router) Get(pattern string, fn Handler) {
-	fmt.Println("Adding GET", path.Join(r.prefix, pattern))
+	// fmt.Println("Adding GET", path.Join(r.prefix, pattern))
 	r.mux.GET(path.Join(r.prefix, pattern), r.middleware(fn))
 }
 
@@ -412,7 +412,7 @@ func (r *Router) middleware(fn Handler) httprouter.Handle {
 		c.IsWebsocket = req.Header.Get("Upgrade") == "websocket"
 		c.SessionId = c.UniqueId()
 
-		fmt.Println("Updaiting rqc", r.rqc)
+		// fmt.Println("Updaiting rqc", r.rqc)
 		r.rqc.Add(req.URL.Path)
 		atomic.AddUint64(&r.requestCount, 1)
 

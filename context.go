@@ -273,7 +273,7 @@ func (c *Context) W() http.ResponseWriter {
 func (c *Context) GetCookie(name string) string {
 	cookie, err := c.Request.Cookie(name)
 	if err != nil {
-		fmt.Println("COOKIE ERROR", err)
+		// fmt.Println("COOKIE ERROR", err)
 		return ""
 	}
 
