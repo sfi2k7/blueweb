@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 )
 
+type sender func(id string, args WsData)
+
 const (
 	WsEventOpen    = "ws_open"
 	WsEventClose   = "ws_close"
@@ -82,7 +84,7 @@ func (ws *WsServer) Handle(c *Context) {
 
 	openData.Set("count", ws.conns.count())
 
-	handler.handle(context.Background(), openData)
+	handler.handle(context.Background(), openData, ws.conns.send)
 
 	ws.conns.remove(handler.ID)
 

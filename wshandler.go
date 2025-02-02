@@ -26,7 +26,7 @@ func (wh *wshandler) Dispose() {
 	wh.ex.Close()
 }
 
-func (wh *wshandler) handle(ctx context.Context, opendata WsData) {
+func (wh *wshandler) handle(ctx context.Context, opendata WsData, sender sender) {
 	wh.isopen = true
 
 	defer func() {
@@ -34,7 +34,12 @@ func (wh *wshandler) handle(ctx context.Context, opendata WsData) {
 		wh.isopen = false
 	}()
 
-	openresponse := wh.clienthandler(&WSArgs{ID: wh.ID, EventType: "ws_open", Body: opendata})
+	localsender := func(args WsData) error {
+		sender(wh.ID, args)
+		return nil
+	}
+
+	openresponse := wh.clienthandler(&WSArgs{Sender: localsender, ID: wh.ID, EventType: "ws_open", Body: opendata})
 
 	if openresponse != nil {
 		if openresponse.Bool("close") {
@@ -48,7 +53,7 @@ func (wh *wshandler) handle(ctx context.Context, opendata WsData) {
 		for wh.isopen {
 			_, body, err := wh.c.ReadMessage()
 			if err != nil || len(body) == 0 {
-				wh.clienthandler(&WSArgs{Broadcase: wh.Broadcast, ID: wh.ID, EventType: "ws_error", Body: WsData{"error": err.Error()}})
+				wh.clienthandler(&WSArgs{Sender: localsender, Broadcase: wh.Broadcast, ID: wh.ID, EventType: "ws_error", Body: WsData{"error": err.Error()}})
 				wh.ex.In(struct{}{})
 				wh.isopen = false
 				return
@@ -65,6 +70,7 @@ func (wh *wshandler) handle(ctx context.Context, opendata WsData) {
 				Body:      data,
 				ID:        wh.ID,
 				EventType: "ws_message",
+				Sender:    localsender,
 			})
 
 			if response != nil {

@@ -314,6 +314,7 @@ func (r *Router) Get(pattern string, fn Handler) {
 // pattern is the path for the route
 // fn is the handler for the route
 func (r *Router) Post(pattern string, fn Handler) {
+	// fmt.Println("Adding POST", path.Join(r.prefix, pattern))
 	r.mux.POST(path.Join(r.prefix, pattern), r.middleware(fn))
 }
 

@@ -7,12 +7,14 @@ import (
 )
 
 type WsHandler func(args *WSArgs) WsData
+type WsSender func(args WsData) error
 
 type WSArgs struct {
 	ID        string
 	EventType string
 	Body      WsData
 	Broadcase func(data WsData)
+	Sender    WsSender
 }
 
 type Interface interface{}
