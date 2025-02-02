@@ -35,6 +35,11 @@ func (wh *wshandler) handle(ctx context.Context, opendata WsData, sender sender)
 	}()
 
 	localsender := func(args WsData) error {
+		if args != nil && args.Bool("close") {
+			wh.ex.In(struct{}{})
+			wh.isopen = false
+		}
+
 		sender(wh.ID, args)
 		return nil
 	}
