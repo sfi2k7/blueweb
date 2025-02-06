@@ -1,4 +1,7 @@
 /cmd/
 cmd/
 *.sh
-airrouter*
+airrouter/*
+airrouter2/*
+airrouterv3/*
+airrouter4/*
