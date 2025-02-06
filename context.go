@@ -206,10 +206,10 @@ func (c *Context) SetCookie(name, value string, expireIn time.Duration) {
 	cookie := &http.Cookie{
 		Name:     name,
 		Value:    value,
-		MaxAge:   0,
+		MaxAge:   int(expireIn.Seconds()),
 		HttpOnly: true,
-		Secure:   false,
-		Expires:  time.Now().Add(expireIn),
+		Secure:   true,
+		// Expires:  time.Now().Add(expireIn),
 		Path:     "/",
 		Raw:      value,
 		Unparsed: []string{value},
