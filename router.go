@@ -48,6 +48,10 @@ type Router struct {
 	ro              *RouterOptions
 }
 
+type groupoptions struct {
+	skipparentmiddleware bool
+}
+
 func picohandlertohttphandler(c Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c(&Context{ResponseWriter: w, Request: r})
@@ -257,6 +261,7 @@ func (r *Router) Group(prefix string) *Router {
 		prefix:       path.Join(r.prefix, prefix),
 		rqc:          r.rqc,
 		requestCount: r.requestCount,
+		isDev:        r.isDev,
 	}
 	return router
 }

@@ -9,7 +9,8 @@ type store struct {
 
 func newStore() *store {
 	return &store{
-		m: make(map[string]interface{}),
+		m:  make(map[string]interface{}),
+		mu: sync.Mutex{},
 	}
 }
 
