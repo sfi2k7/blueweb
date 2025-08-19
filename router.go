@@ -46,6 +46,7 @@ type Router struct {
 	statstoken      string
 	statsendpoint   string
 	ro              *RouterOptions
+	Children        []*Router
 }
 
 type groupoptions struct {
@@ -122,6 +123,10 @@ func (g *GroupOptions) SkipMusts() *GroupOptions {
 // SetDev sets the server to development mode
 func (c *Config) SetDev(dev bool) *Config {
 	c.r.isDev = dev
+	for _, child := range c.r.Children {
+		child.isDev = dev
+	}
+
 	return c
 }
 
@@ -263,6 +268,8 @@ func (r *Router) Group(prefix string) *Router {
 		requestCount: r.requestCount,
 		isDev:        r.isDev,
 	}
+
+	r.Children = append(r.Children, router)
 	return router
 }
 
