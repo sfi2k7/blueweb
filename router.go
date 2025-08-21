@@ -130,6 +130,17 @@ func (c *Config) SetDev(dev bool) *Config {
 	return c
 }
 
+func (r *Router) SetDev(dev bool) {
+	r.isDev = dev
+}
+
+func (r *Router) SetDevNested(dev bool) {
+	r.isDev = dev
+	for _, child := range r.Children {
+		child.isDev = dev
+	}
+}
+
 // SetStatsToken sets the token for the stats endpoint
 // token is the token to use
 func (c *Config) SetStatsToken(token string) *Config {
