@@ -32,6 +32,8 @@ type Router struct {
 	parent          *Router
 	middlewares     []Middleware
 	mustmiddlewares []Middleware
+	premiddlewares  []Middleware
+	postmiddlewares []Middleware
 	port            int
 	cert            string
 	key             string
@@ -377,6 +379,14 @@ func (r *Router) Use(fn Middleware) {
 	r.middlewares = append(r.middlewares, fn)
 }
 
+func (r *Router) Before(fn Middleware) {
+	r.premiddlewares = append(r.premiddlewares, fn)
+}
+
+func (r *Router) After(fn Middleware) {
+	r.postmiddlewares = append(r.postmiddlewares, fn)
+}
+
 func (r *Router) runMust(c *Context) {
 	//Bottom Up - run parent MUST middlewares last
 	if !r.gopt.skipmusts {
@@ -390,6 +400,36 @@ func (r *Router) runMust(c *Context) {
 	if r.parent != nil {
 		r.parent.runMust(c)
 	}
+}
+
+func (r *Router) runBefore(c *Context) bool {
+	if r.parent != nil {
+		if !r.parent.runBefore(c) {
+			return false
+		}
+	}
+
+	for _, middle := range r.premiddlewares {
+		if !middle(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *Router) runAfter(c *Context) bool {
+	if r.parent != nil {
+		if !r.parent.runAfter(c) {
+			return false
+		}
+	}
+
+	for _, middle := range r.postmiddlewares {
+		if !middle(c) {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *Router) runMiddlewares(c *Context) bool {
@@ -443,7 +483,10 @@ func (r *Router) middleware(fn Handler) httprouter.Handle {
 		movenext := r.runMiddlewares(c)
 
 		if movenext {
-			fn(c)
+			if r.runBefore(c) {
+				fn(c)
+				r.runAfter(c)
+			}
 		}
 
 		if !r.so.skipmusts {
@@ -463,9 +506,44 @@ func (r *Router) middleware(fn Handler) httprouter.Handle {
 	}
 }
 
+type Option func(r *Router)
+
+func WithPort(port int) Option {
+	return func(r *Router) {
+		r.port = port
+	}
+}
+
+func WithStatsToken(token string) Option {
+	return func(r *Router) {
+		r.statstoken = token
+	}
+}
+
+func WithStatsEndpoint(endpoint string) Option {
+	return func(r *Router) {
+		r.statsendpoint = endpoint
+	}
+}
+
+func WithStopOnInt() Option {
+	return func(r *Router) {
+		r.stopOnInt = true
+	}
+}
+
+func WithLogging(logging bool) Option {
+	return func(r *Router) {
+		r.isDev = true
+		for _, child := range r.Children {
+			child.isDev = logging
+		}
+	}
+}
+
 // NewRouter creates a new router
 // returns a new router
-func NewRouter() *Router {
+func NewRouter(options ...Option) *Router {
 	router := &Router{
 		gopt:          &serveroptions{},
 		so:            &serveroptions{},
@@ -475,6 +553,10 @@ func NewRouter() *Router {
 		rqc:           &reqcount{r: make(map[string]uint64), s: sync.Mutex{}},
 		statstoken:    "blueweb",
 		statsendpoint: "/__internal__/stats/:token",
+	}
+
+	for _, option := range options {
+		option(router)
 	}
 
 	return router
