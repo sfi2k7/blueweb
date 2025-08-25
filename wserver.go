@@ -35,6 +35,26 @@ func (ws *WsServer) Close() {
 	ws.conns.closeAll()
 }
 
+func (ws *WsServer) Send(id string, args WsData) {
+	if ws == nil {
+		return
+	}
+
+	if ws.conns.count() == 0 {
+		return
+	}
+
+	ws.conns.send(id, args)
+}
+
+func (ws *WsServer) SendAll(sender string, args WsData) {
+	if ws == nil {
+		return
+	}
+
+	ws.conns.broadcast(args, sender)
+}
+
 func (ws *WsServer) Handle(c *Context) {
 	defer func() {
 		if r := recover(); r != nil {

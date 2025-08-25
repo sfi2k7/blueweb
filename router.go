@@ -327,6 +327,18 @@ func (r *Router) Ws(pattern string, mh WsHandler) {
 	r.mux.GET(pattern, r.middleware(r.wsserver.Handle))
 }
 
+func (r *Router) SendWS(id string, args WsData) {
+	if r.parent != nil {
+		return
+	}
+
+	if r.wsserver == nil {
+		return
+	}
+
+	r.wsserver.Send(id, args)
+}
+
 // Get sets a GET route
 // pattern is the path for the route
 // fn is the handler for the route
